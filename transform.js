@@ -9,42 +9,14 @@ const emoTab = {
 	info: ":information_source:",
 	danger: ":no_entry_sign:"
 }
-let newDoc = `<p align="center">
-  <a href="http://nickjs.org/">
-    <img alt="NickJS" src="https://raw.githubusercontent.com/phantombuster/nickjs/master/logo.png">
-  </a>
-</p>
-
-<p align="center">
-  A modern headless browser library, as simple as it is powerful.
-</p>
-
-<p align="center">
-  <a href="https://www.npmjs.com/package/nickjs"><img alt="NPM version" src="https://img.shields.io/npm/v/nickjs.svg?style=flat-square"></a>
-  <a href="https://gitter.im/phantombuster/nickjs"><img alt="Gitter room" src="https://img.shields.io/gitter/room/Phantombuster/Lobby.svg?style=flat-square"></a>
-  <a href="https://twitter.com/phbuster"><img alt="Twitter follow" src="https://img.shields.io/twitter/follow/phbuster.svg?style=social&label=Follow"></a>
-</p>
-
-<p align="center">
-  <a href="http://nickjs.org">NickJS.org</a> — <b><a href="https://hub.phantombuster.com/v1/reference#nick">Documentation</a></b>
-</p>
-
-* 13 methods only
-* Async-await ready (it also works with callbacks)
-* Built to support any driver (today PhantomJS+CasperJS; Chromium headless coming soon)
-
-NickJS started as a very basic need to simplify our lives writing lines of PhantomJS.
-<br>As we started working on [Phantombuster](https://phantombuster.com), we realised we needed a higher-level library, as simple and powerful as possible, and which would be evolutive since it was clear Chromium headless was going to be a big thing.
-
-We hope you'll enjoy using it and to get the discussion started.
-
-Feel free to get in touch, suggest pull requests and add your own drivers!`
+const toc = {}
+let newDoc = ""
 
 const parseBlocks = (text) => {
 	const regex = /\[block:(\w*)\]\n([\s\S]*?)\n\[\/block]/gm;
 	const data = []
 	let m
-	let i = 0		
+	let i = 0
 	while ((m = regex.exec(text)) !== null) {
 		if (m.index === regex.lastIndex) {
 			regex.lastIndex++;
@@ -68,7 +40,7 @@ const parseBlocks = (text) => {
 
 const parseTitle = (text) => {
 	const data = {}
-	const regex = /---\ntitle: .*\nexcerpt: "(.*)"\n---/gm
+	const regex = /---\ntitle: (.*)\nexcerpt: "(.*)"\n---/gm
 	let m
 
 	while ((m = regex.exec(text)) !== null) {
@@ -80,6 +52,9 @@ const parseTitle = (text) => {
 				data.full = match
 			}
 			if (groupIndex === 1) {
+				data.secondTitle = match.replace(/\"/g, "")
+			}
+			if (groupIndex === 2) {
 				data.title = match
 			}
 		})
@@ -87,35 +62,79 @@ const parseTitle = (text) => {
 	return data
 }
 
+const createLink = (title) => {
+	return title.replace("(", "").replace(")", "").replace("]", "").replace(/\s\[\,\s/g, "--").replace(/\,\s/g, "-").replace("[", "").toLowerCase().replace(" ", "")
+}
+
 for (folder of folders) {
-	const files = fs.readdirSync(`${baseFolder}/${folder}`)
-	newDoc += `\n# ${folder}\n\n`
+	const textObject = []
+	let files = fs.readdirSync(`${baseFolder}/${folder}`)
+	newDoc += `\n# ${folder.charAt(0).toUpperCase() + folder.slice(1)}\n\n`
+	toc[folder.charAt(0).toUpperCase() + folder.slice(1)] = []
 	for (file of files) {
+		const func = {}
 		let text = fs.readFileSync(`${baseFolder}/${folder}/${file}`).toString()
 		const fn = parseTitle(text)
-		if (fn.title === "")
+		if (fn.title === "" && fn.secondTitle)
+			fn.title = fn.secondTitle
+		else if (fn.title === "")
 			fn.title = file.replace("nick-", "").replace(".md", "")
+		toc[folder.charAt(0).toUpperCase() + folder.slice(1)].push({title: fn.title.replace(/\(.*\)/, "()"), link: createLink(fn.title)})
+		func.realTitle = fn.title
+		func.title = fn.title.replace(/\(.*\)/, "()")
 		fn.title = "\n# " + fn.title
 		text = text.replace(fn.full, fn.title)
 		const blocks = parseBlocks(text)
-		// console.log(JSON.stringify(data, null, 2))
 		for (const block of blocks) {
 			if (block.type === "callout") {
 				const example = block.code
-				const mdExample = `\n### ${emoTab[example.type]} ${example.title}\n${example.body}`
+				const mdExample = `\n##### ${emoTab[example.type]} ${example.title}\n> ${example.body}\n`
 				text = text.replace(block.full, "")
 				text += mdExample
 			}
 			if (block.type === "code") {
 				const example = block.code.codes[0]
 				example.name = example.name.replace("Async/Await", "Example")
-				const mdExample = `\n### ${example.name}\n${ticks}${example.language}\n${example.code}\n${ticks}\n`
+				const mdExample = `\n##### ${example.name}\n${ticks}${example.language}\n${example.code}\n${ticks}\n`
 				text = text.replace(block.full, "")
 				text += mdExample
 			}
 		}
-		newDoc += text
+		text = text.replace(/\#\# \—/g, "### —")
+		func.text = text
+		textObject.push(func)
+	}
+	textObject.sort((a, b) => {
+		if (a.realTitle < b.realTitle)
+			return -1
+		if (a.realTitle > b.realTitle)
+			return 1
+		return 0
+	})
+	for (const myFunc of textObject) {
+		newDoc += myFunc.text
+	}
+}
+let tocText = ""
+for (let bigTitle in toc) {
+	tocText += `+ [${bigTitle.replace("-", " ")}](#${bigTitle.toLowerCase()})\n`
+	toc[bigTitle].sort((a, b) => {
+		if (a.title < b.title)
+			return -1;
+		if (a.title > b.title)
+			return 1;
+		return 0;
+	})
+	for (const func of toc[bigTitle]) {
+		tocText += `  + [${func.title}](#${func.link})\n`
 	}
 }
 
-fs.writeFileSync("./doc.md", newDoc)
+const myDoc = `# Table of content
+
+${tocText}
+
+# Documentation
+
+${newDoc}`
+fs.writeFileSync("./doc.md", myDoc)
