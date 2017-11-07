@@ -1,5 +1,7 @@
 const fs = require("fs")
 
+const docBaseUrl = process.argv[2]
+
 const baseFolder = "./v1"
 
 const folders = fs.readdirSync(baseFolder)
@@ -12,6 +14,7 @@ const emoTab = {
 const toc = {}
 let newDoc = ""
 
+// Function to parse text from a file and return all blocks (samples of code or callouts)
 const parseBlocks = (text) => {
 	const regex = /\[block:(\w*)\]\n([\s\S]*?)\n\[\/block]/gm;
 	const data = []
@@ -38,6 +41,7 @@ const parseBlocks = (text) => {
 	return data
 }
 
+// Function to parse text from a file and return the title of the section
 const parseTitle = (text) => {
 	const data = {}
 	const regex = /---\ntitle: (.*)\nexcerpt: "(.*)"\n---/gm
@@ -62,24 +66,52 @@ const parseTitle = (text) => {
 	return data
 }
 
+// Function to replace the anchor from readme.io to direct links to the readme.io documentation (or any other url in argument)
+const changeAnchors = (text) => {
+	const regex = /\[.*?\]\((#.*?)\)/g
+	let m
+	const links = []
+	let i = 0
+
+	while((m = regex.exec(text)) !== null) {
+		if (m.index === regex.lastIndex) {
+			regex.lastIndex++
+		}
+		m.forEach((match, groupIndex) => {
+			if (groupIndex === 1) {
+				links.push(match)
+			}
+		})
+	}
+	for (const link of links) {
+		console.log(link)
+		text = text.replace(`(${link})`, `(${docBaseUrl}${link})`)
+	}
+	return text
+}
+
+// Simple function just to format the anchor from a title
 const createLink = (title) => {
 	return title.replace("(", "").replace(")", "").replace("]", "").replace(/\s\[\,\s/g, "--").replace(/\,\s/g, "-").replace("[", "").toLowerCase().replace(" ", "")
 }
 
-for (folder of folders) {
+for (const folder of folders) {
 	const textObject = []
 	let files = fs.readdirSync(`${baseFolder}/${folder}`)
-	newDoc += `\n# ${folder.charAt(0).toUpperCase() + folder.slice(1)}\n\n`
-	toc[folder.charAt(0).toUpperCase() + folder.slice(1)] = []
-	for (file of files) {
+	const sectionName = folder.charAt(0).toUpperCase() + folder.slice(1)
+	newDoc += `\n# ${sectionName}\n\n`
+	toc[sectionName] = []
+	for (const file of files) {
+		console.log(`Changing file ${folder}/${file}...`)
 		const func = {}
 		let text = fs.readFileSync(`${baseFolder}/${folder}/${file}`).toString()
+		text = changeAnchors(text)
 		const fn = parseTitle(text)
 		if (fn.title === "" && fn.secondTitle)
 			fn.title = fn.secondTitle
 		else if (fn.title === "")
 			fn.title = file.replace("nick-", "").replace(".md", "")
-		toc[folder.charAt(0).toUpperCase() + folder.slice(1)].push({title: fn.title.replace(/\(.*\)/, "()"), link: createLink(fn.title)})
+		toc[sectionName].push({title: fn.title.replace(/\(.*\)/, "()"), link: createLink(fn.title)})
 		func.realTitle = fn.title
 		func.title = fn.title.replace(/\(.*\)/, "()")
 		fn.title = "\n# " + fn.title
@@ -130,11 +162,10 @@ for (let bigTitle in toc) {
 	}
 }
 
-const myDoc = `# Table of content
+const myDoc = `# Documentation
 
 ${tocText}
 
-# Documentation
-
 ${newDoc}`
 fs.writeFileSync("./doc.md", myDoc)
+console.log("Transform finished, get your doc in doc.md.")
